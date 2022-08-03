@@ -1,0 +1,25 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.1.32414.318
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "omcilog2pcap", "omcilog2pcap\omcilog2pcap.csproj", "{D9123F90-6809-454B-A76B-3CA8F85F7E2E}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{D9123F90-6809-454B-A76B-3CA8F85F7E2E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D9123F90-6809-454B-A76B-3CA8F85F7E2E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D9123F90-6809-454B-A76B-3CA8F85F7E2E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D9123F90-6809-454B-A76B-3CA8F85F7E2E}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {58C955AC-2194-4455-B4C1-C2DF5B32820F}
+	EndGlobalSection
+EndGlobal

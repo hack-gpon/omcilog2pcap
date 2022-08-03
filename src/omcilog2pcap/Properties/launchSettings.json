@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "omcid_parser": {
+      "commandName": "Project",
+      "commandLineArgs": "\"C:\\Users\\ADX\\Downloads\\Telegram Desktop\\omci_log.txt\""
+    }
+  }
+}
