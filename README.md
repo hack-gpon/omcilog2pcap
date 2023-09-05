@@ -7,4 +7,4 @@ supported omci logs formats
 - Sagecomm devices
 - Cortina Access devices (you can merge pkt_rx e pkt_tx into a single file and the software will re-order them automatically)
 
-Converted to JS from .NET 7.0 + native code generation (aot)
+Converted to JS from [.NET 7.0 + native code generation (aot)[(https://github.com/hack-gpon/omcilog2pcap/tree/C%23)
