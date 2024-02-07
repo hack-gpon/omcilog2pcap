@@ -1,3 +1,11 @@
+```
+ _   _               _       ____  ____    ___   _   _ 
+| | | |  __ _   ___ | | __  / ___||  _ \  / _ \ | \ | |
+| |_| | / _` | / __|| |/ / | |  _ | |_) || | | ||  \| |
+|  _  || (_| || (__ |   <  | |_| ||  __/ | |_| || |\  |
+|_| |_| \__,_| \___||_|\_\  \____||_|     \___/ |_| \_|
+```
+
 # omcilog2pcap (ALPHA JS)
 converts omci logs to pcap for easy view with wireshark ([omci plugin required](https://github.com/hack-gpon/omci-wireshark-dissector))
 
