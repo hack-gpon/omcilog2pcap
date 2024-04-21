@@ -1,9 +1,12 @@
 ﻿using System.Globalization;
 using System.Text.RegularExpressions;
 
-const string EthType = "88B5";
-const string sagecomm_magic = ":omci capture:";
-const string lantiq_magic = "[omcid]";
+const string ethType = "88B5";
+const string sagecommMagic = ":omci capture:";
+const string lantiqMagic = "[omcid]";
+const string huaweiMagic = "OLT->ONT: Priority";
+const string macOlt = "088701701701";
+const string macOnt = "088788000000";
 
 again:
 if (args.Length != 1)
@@ -15,6 +18,7 @@ if (args.Length != 1)
         args = new[] { str.Replace("\"", "") };
         goto again;
     }
+
     return;
 }
 
@@ -25,8 +29,8 @@ if (!File.Exists(args[0]))
     return;
 }
 
-await using MemoryStream ms = new();
-await ms.WriteAsync(new byte[]
+await using MemoryStream outputStream = new();
+await outputStream.WriteAsync(new byte[]
 {
     0xD4, 0xC3, 0xB2, 0xA1, 0x02, 0x00, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     0x00, 0x00, 0x00, 0xFF, 0xFF, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00
@@ -34,47 +38,32 @@ await ms.WriteAsync(new byte[]
 
 var txt = File.ReadAllText(args[0]);
 
-if (txt.Contains(lantiq_magic)) // lantiq
+if (txt.Contains(lantiqMagic)) // lantiq
 {
-    var split = txt.Replace("\r\n", "\n").Replace('\r', '\n').Split(lantiq_magic, StringSplitOptions.RemoveEmptyEntries);
+    var split = txt.Replace("\r\n", "\n").Replace('\r', '\n')
+        .Split(lantiqMagic, StringSplitOptions.RemoveEmptyEntries);
     var lst = split.Where(x => x.Contains("MSG ")).ToList();
-
-    DateTimeOffset? currentDate = null;
-    var resetCount = 0;
 
     for (int i = 0; i < lst.Count; i++)
     {
-        var splitlines = lst[i].Split('\n', 2, StringSplitOptions.RemoveEmptyEntries);
+        var splitLines = lst[i].Split('\n', 2, StringSplitOptions.RemoveEmptyEntries);
 
-        if (!(splitlines.Length > 1))
+        if (!(splitLines.Length > 1))
             continue;
 
-        var mac_olt = "088701701701";
-        var mac_ont = "088788000000";
+        var isOltToOnt = splitLines[0].Contains("TX");
 
-        if (!splitlines[0].Contains("TX"))
-        {
-            mac_olt = "088788000000";
-            mac_ont = "088701701701";
-        }
-
-        var hexString = splitlines[1].Trim().Replace(" ", "").Replace("\n", "").Replace("\r", "");
-        var time = DateTimeOffset.ParseExact("01/01/2000 " + splitlines[0].Trim().Split(' ').First(),
+        var hexString = splitLines[1].Trim().Replace(" ", "").Replace("\n", "").Replace("\r", "");
+        var time = DateTimeOffset.ParseExact("01/01/2000 " + splitLines[0].Trim().Split(' ').First(),
             "dd/MM/yyyy HH:mm:ss", CultureInfo.InvariantCulture);
 
-        if (currentDate != time)
-            resetCount = 0;
-        currentDate = time;
-
-        await WriteFrameAsync(time, hexString, i, mac_olt, mac_ont);
-
-        resetCount++;
+        await WriteFrameAsync(time, hexString, i, isOltToOnt ? macOlt : macOnt, isOltToOnt ? macOnt : macOlt, outputStream);
     }
 }
-else if (txt.Contains(sagecomm_magic)) // Sagecomm by TIM (at least)
+else if (txt.Contains(sagecommMagic)) // Sagecomm by TIM (at least)
 {
     var split = txt.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n', StringSplitOptions.RemoveEmptyEntries);
-    var dataLines = split.Where(x => x.Contains(sagecomm_magic)).ToList();
+    var dataLines = split.Where(x => x.Contains(sagecommMagic)).ToList();
 
     for (int i = 0; i < dataLines.Count; i++)
     {
@@ -83,8 +72,7 @@ else if (txt.Contains(sagecomm_magic)) // Sagecomm by TIM (at least)
         var hexString = components[2];
         var asDouble = double.Parse(ts, CultureInfo.InvariantCulture);
         var time = DateTime.FromFileTimeUtc((long)asDouble * 1000);
-        var mac_std = "088788000000";
-        await WriteFrameAsync(time, hexString, i, mac_std, mac_std);
+        await WriteFrameAsync(time, hexString, i, macOnt, macOlt, outputStream);
     }
 }
 else if (txt.Contains(" debug: ")) // Cortina Access magic
@@ -96,14 +84,15 @@ else if (txt.Contains(" debug: ")) // Cortina Access magic
     for (var i = 0; i < goodStrings.Count; i++)
     {
         var goodString = goodStrings[i];
-        var split = goodString.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        var split = goodString.Replace("\r\n", "\n").Replace('\r', '\n')
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries);
         var hexString = "";
         var ts = "";
-        for (var i1 = 0; i1 < split.Length; i1++)
+        foreach (var line in split)
         {
-            var underAnalysis = split[i1].Trim();
+            var underAnalysis = line.Trim();
             var p = lineRegex.Match(underAnalysis);
-            if(p.Success)
+            if (p.Success)
             {
                 ts = p.Groups["ts"].Value;
                 var data = p.Groups["data"].Value;
@@ -112,14 +101,44 @@ else if (txt.Contains(" debug: ")) // Cortina Access magic
         }
 
         hexString = hexString.Replace(" ", "").Replace("\t", "");
-        if(hexString.Length > 0) {
+        if (hexString.Length > 0)
+        {
             Console.WriteLine(hexString);
             Console.WriteLine(ts);
-            var time = DateTimeOffset.ParseExact("01/01/2000 " + "00:00:00", "dd/MM/yyyy HH:mm:ss", CultureInfo.InvariantCulture);
-            var mac_std = "088788000000";
-            await WriteFrameAsync(time, hexString, i, mac_std, mac_std);
+            var time = DateTimeOffset.ParseExact("01/01/2000 " + "00:00:00", "dd/MM/yyyy HH:mm:ss",
+                CultureInfo.InvariantCulture);
+            await WriteFrameAsync(time, hexString, i, macOnt, macOlt, outputStream);
         }
-
+    }
+}
+else if (txt.Contains(huaweiMagic)) // Huawei S800e and B450
+{
+    var split = txt.Replace("\r\n", "\n").Replace('\r', '\n');
+    var blocks = split.Split("\n\n", StringSplitOptions.RemoveEmptyEntries);
+    var separatorRegex = new Regex("----+");
+    var directionRegex =
+        new Regex(
+            "^\\[(?<ts>\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}.\\d{6})](?<direction>(OLT|ONT)->(OLT|ONT))");
+    foreach (var block in blocks)
+    {
+        var blockSections = separatorRegex.Split(block);
+        if (blockSections.Length == 2)
+        {
+            var head = blockSections[0].Split("\n")[0];
+            var headMatcher = directionRegex.Match(head);
+            if (headMatcher.Success)
+            {
+                var direction = headMatcher.Groups["direction"].Value;
+                var isOltToOnt = "OLT->ONT".Equals(direction);
+                var ts = headMatcher.Groups["ts"].Value;
+                var time = DateTime.ParseExact(ts, "yyyy-MM-dd HH:mm:ss.FFFFFF", CultureInfo.InvariantCulture);
+                var data = blockSections[1].Replace(" ", "").Replace("\n", "");
+                await WriteFrameAsync(
+                    time, data, time.Millisecond * 1000 + time.Microsecond, isOltToOnt ? macOlt : macOnt,
+                    isOltToOnt ? macOnt : macOlt, outputStream
+                );
+            }
+        }
     }
 }
 else if (txt.Contains(' ')) // basically others? I've tested it with realtek-based chip logs (afm0002tim)
@@ -131,8 +150,7 @@ else if (txt.Contains(' ')) // basically others? I've tested it with realtek-bas
         var hexString = split[i].Replace(" ", "");
         var time = DateTimeOffset.ParseExact("01/01/2000 " + "00:00:00", "dd/MM/yyyy HH:mm:ss",
             CultureInfo.InvariantCulture);
-        var mac_std = "088788000000";
-        await WriteFrameAsync(time, hexString, i, mac_std, mac_std);
+        await WriteFrameAsync(time, hexString, i, macOlt, macOnt, outputStream);
     }
 }
 else
@@ -141,28 +159,31 @@ else
     return;
 }
 
-await SaveToDisk(ms,
-    Path.Combine(Directory.GetCurrentDirectory(), Path.GetFileNameWithoutExtension(args[0]) + ".pcap"));
+var outputFile = Path.Combine(Directory.GetCurrentDirectory(), Path.GetFileNameWithoutExtension(args[0]) + ".pcap");
+await SaveToDisk(outputStream,
+    outputFile);
+
+Console.WriteLine("File written to " + outputFile);
 
 // -------- Methods
 
-async Task WriteFrameAsync(DateTimeOffset time, string hexString, int nanoSecondsTimestamp, string macSenderHex,
-    string macReceiverHex)
+async Task WriteFrameAsync(DateTimeOffset time, string hexString, int microSecondsTimestamp, string macSenderHex,
+    string macReceiverHex, MemoryStream stream)
 {
-    var fakeethernetframe = macSenderHex + macReceiverHex + EthType;
-    var byteArrayHex = Convert.FromHexString(fakeethernetframe + hexString);
+    var fakeEthernetFrame = macSenderHex + macReceiverHex + ethType;
+    var byteArrayHex = Convert.FromHexString(fakeEthernetFrame + hexString);
     var byteArrayLength = BitConverter.GetBytes(byteArrayHex.Length);
 
-    await ms.WriteAsync(BitConverter.GetBytes((int)time.ToUnixTimeSeconds())); // EPOCH TIME
-    await ms.WriteAsync(BitConverter.GetBytes(nanoSecondsTimestamp)); // TIME IN Nani!?!?!?Seconds
-    await ms.WriteAsync(byteArrayLength); // FRAME LENGTH
-    await ms.WriteAsync(byteArrayLength); // CAPTURE LENGTH (= FRAME LENGTH)
-    await ms.WriteAsync(byteArrayHex); // FRAME CONTENT
+    await stream.WriteAsync(BitConverter.GetBytes((int)time.ToUnixTimeSeconds())); // EPOCH TIME
+    await stream.WriteAsync(BitConverter.GetBytes(microSecondsTimestamp)); // TIME IN Nani!?!?!?Seconds
+    await stream.WriteAsync(byteArrayLength); // FRAME LENGTH
+    await stream.WriteAsync(byteArrayLength); // CAPTURE LENGTH (= FRAME LENGTH)
+    await stream.WriteAsync(byteArrayHex); // FRAME CONTENT
 }
 
-async Task SaveToDisk(MemoryStream ms, string filePath)
+async Task SaveToDisk(MemoryStream stream, string filePath)
 {
     await using FileStream fs = new(filePath, FileMode.Create, FileAccess.Write);
-    ms.Position = 0;
-    await ms.CopyToAsync(fs);
+    stream.Position = 0;
+    await stream.CopyToAsync(fs);
 }
