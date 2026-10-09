@@ -23,6 +23,7 @@ env:
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 'true'
   NUGET_PACKAGES: ${{ github.workspace }}/.nuget/packages
   PROJECT: src/omcilog2pcap/omcilog2pcap.csproj
+  APP_NAME: omcilog2pcap
 
 jobs:
   version:
@@ -104,24 +105,24 @@ jobs:
         shell: bash
         run: |
           echo "0a0b 2e0a00020000000000" > smoke.txt
-          "artifacts/${{ matrix.rid }}/omcilog2pcap.exe" smoke.txt
+          "artifacts/${{ matrix.rid }}/$APP_NAME.exe" smoke.txt
           test -s smoke.pcap
 
       - name: Package
         shell: pwsh
         run: |
-          Compress-Archive -Path "artifacts/${{ matrix.rid }}/omcilog2pcap.exe", "README.md", "LICENSE" `
-                           -DestinationPath "omcilog2pcap-$env:VERSION-${{ matrix.rid }}.zip"
+          Compress-Archive -Path "artifacts/${{ matrix.rid }}/$env:APP_NAME.exe", "README.md", "LICENSE" `
+                           -DestinationPath "$env:APP_NAME-$env:VERSION-${{ matrix.rid }}.zip"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
-          name: omcilog2pcap-${{ matrix.rid }}
+          name: ${{ env.APP_NAME }}-${{ matrix.rid }}
           path: '*.zip'
           if-no-files-found: error
 
-  build-linux:
-    name: Build Linux (${{ matrix.rid }})
+  build-unix:
+    name: Build ${{ matrix.name }} (${{ matrix.rid }})
     runs-on: ${{ matrix.os }}
     needs: [version]
     strategy:
@@ -130,8 +131,16 @@ jobs:
         include:
           - rid: linux-x64
             os: ubuntu-latest
+            name: Linux
           - rid: linux-arm64
             os: ubuntu-24.04-arm
+            name: Linux
+          - rid: osx-x64
+            os: macos-15-intel
+            name: macOS
+          - rid: osx-arm64
+            os: macos-latest
+            name: macOS
     env:
       VERSION: ${{ needs.version.outputs.version }}
 
@@ -141,6 +150,7 @@ jobs:
           persist-credentials: false
 
       - name: Install native AOT prerequisites
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends clang zlib1g-dev
@@ -170,27 +180,27 @@ jobs:
       - name: Smoke test
         run: |
           echo "0a0b 2e0a00020000000000" > smoke.txt
-          "artifacts/${{ matrix.rid }}/omcilog2pcap" smoke.txt
+          "artifacts/${{ matrix.rid }}/$APP_NAME" smoke.txt
           test -s smoke.pcap
 
       - name: Package
         run: |
           mkdir -p package
-          cp "artifacts/${{ matrix.rid }}/omcilog2pcap" README.md LICENSE package/
-          chmod +x package/omcilog2pcap
-          tar -C package -czf "omcilog2pcap-${VERSION}-${{ matrix.rid }}.tar.gz" .
+          cp "artifacts/${{ matrix.rid }}/$APP_NAME" README.md LICENSE package/
+          chmod +x "package/$APP_NAME"
+          tar -C package -czf "${APP_NAME}-${VERSION}-${{ matrix.rid }}.tar.gz" .
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
-          name: omcilog2pcap-${{ matrix.rid }}
+          name: ${{ env.APP_NAME }}-${{ matrix.rid }}
           path: '*.tar.gz'
           if-no-files-found: error
 
   release:
     name: Tag & Release
     runs-on: ubuntu-latest
-    needs: [version, build-windows, build-linux]
+    needs: [version, build-windows, build-unix]
     if: github.ref == 'refs/heads/C#' && github.event_name != 'pull_request'
     permissions:
       contents: write
@@ -252,10 +262,10 @@ jobs:
         run: |
           if [ "${{ needs.version.outputs.tag_exists }}" = "true" ]; then
             STATE=pending
-            DESCRIPTION="Version v$VERSION already released - bump <Version> in omcilog2pcap.csproj."
+            DESCRIPTION="Version v$VERSION already released - bump <Version> in $APP_NAME.csproj."
           elif [ "${{ steps.gh_release.outcome }}" = "success" ]; then
             STATE=success
-            DESCRIPTION="Released v$VERSION with Windows and Linux artifacts."
+            DESCRIPTION="Released v$VERSION with Windows, Linux and macOS artifacts."
           else
             STATE=failure
             DESCRIPTION="Release failed with an unexpected error."
